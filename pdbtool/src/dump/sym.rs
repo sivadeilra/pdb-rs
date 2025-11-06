@@ -1,6 +1,7 @@
 use super::*;
 use crate::dump_utils::indent;
 use anyhow::bail;
+use ms_pdb::codeview::arch::{Arch, ArchReg};
 use ms_pdb::syms::SymData;
 use ms_pdb::tpi::TypeStream;
 use tracing::warn;
@@ -119,11 +120,13 @@ pub fn dump_sym(
         SymData::FrameProc(_) => {}
 
         SymData::RegRel(reg_rel) => {
+            let reg = reg_rel.fixed.register.get();
+            let arch_reg = ArchReg::from_arch_reg(context.arch, reg);
             write!(
                 out,
-                "reg(0x{:x})+0x{:x}, ",
-                reg_rel.fixed.register.get(),
-                reg_rel.fixed.offset.get()
+                "{arch_reg} + 0x{offset:x}, ",
+                // reg_rel.fixed.register.get(),
+                offset = reg_rel.fixed.offset.get()
             )?;
             ty_ref(out, context, reg_rel.fixed.ty.get())?;
             write!(out, " {}", reg_rel.name)?;
@@ -176,7 +179,8 @@ pub fn dump_sym(
         SymData::InlineSiteEnd => {}
 
         SymData::DefRangeRegister(r) => {
-            write!(out, "register: 0x{:x}", r.fixed.reg)?;
+            let reg = ArchReg::from_arch_reg(context.arch, r.fixed.reg.get());
+            write!(out, "register: {reg}")?;
         }
 
         SymData::DefRangeRegisterRel(r) => {
@@ -222,6 +226,16 @@ pub fn dump_sym(
         SymData::HotPatchFunc(hp) => {
             write!(out, "0x{:x} : {}", hp.func, hp.name)?;
         }
+
+        SymData::CoffGroup(group) => {
+            write!(
+                out,
+                "{} : {} + {}",
+                group.name,
+                group.fixed.off_seg,
+                group.fixed.cb.get()
+            )?;
+        }
     }
 
     writeln!(out)?;
@@ -247,16 +261,22 @@ pub struct DumpSymsContext<'a> {
     pub show_record_offsets: bool,
     pub show_type_index: bool,
     pub ipi: &'a TypeStream<Vec<u8>>,
+    pub arch: Arch,
 }
 
 impl<'a> DumpSymsContext<'a> {
-    pub fn new(type_stream: &'a TypeStream<Vec<u8>>, ipi: &'a TypeStream<Vec<u8>>) -> Self {
+    pub fn new(
+        arch: Arch,
+        type_stream: &'a TypeStream<Vec<u8>>,
+        ipi: &'a TypeStream<Vec<u8>>,
+    ) -> Self {
         Self {
             scope_depth: 0,
             type_stream,
             show_record_offsets: true,
             show_type_index: false,
             ipi,
+            arch,
         }
     }
 }
@@ -269,10 +289,12 @@ pub fn dump_globals(
     show_types: bool,
 ) -> anyhow::Result<()> {
     println!("Global symbols:");
+    let arch = p.arch()?;
     let gss = p.gss()?;
     let tpi = p.read_type_stream()?;
     let ipi = p.read_ipi_stream()?;
     dump_symbol_stream(
+        arch,
         &tpi,
         &ipi,
         &gss.stream_data,
@@ -286,6 +308,7 @@ pub fn dump_globals(
 }
 
 pub fn dump_symbol_stream(
+    arch: Arch,
     type_stream: &TypeStream<Vec<u8>>,
     ipi: &TypeStream<Vec<u8>>,
     symbol_records: &[u8],
@@ -309,7 +332,7 @@ pub fn dump_symbol_stream(
 
     let mut num_found = 0;
     let mut out = String::new();
-    let mut context = DumpSymsContext::new(type_stream, ipi);
+    let mut context = DumpSymsContext::new(arch, type_stream, ipi);
     context.show_type_index = show_types;
 
     for (record_range, sym) in iter {
@@ -389,10 +412,12 @@ pub fn dump_module_symbols(pdb: &Pdb, options: DumpModuleSymbols) -> anyhow::Res
             continue;
         };
 
+        let arch = pdb.arch()?;
         let tpi = pdb.read_type_stream()?;
         let ipi = pdb.read_ipi_stream()?;
 
         dump_symbol_stream(
+            arch,
             &tpi,
             &ipi,
             module_stream.sym_data()?,
@@ -415,7 +440,7 @@ pub fn dump_module_symbols(pdb: &Pdb, options: DumpModuleSymbols) -> anyhow::Res
                 let gss = pdb.gss()?;
 
                 let mut out = String::new();
-                let mut context = DumpSymsContext::new(&tpi, &ipi);
+                let mut context = DumpSymsContext::new(arch, &tpi, &ipi);
 
                 for &global_ref in module_global_refs.iter() {
                     let global_ref = global_ref.get();
@@ -454,6 +479,7 @@ pub fn dump_module_symbols(pdb: &Pdb, options: DumpModuleSymbols) -> anyhow::Res
 }
 
 pub fn dump_gsi(p: &Pdb) -> Result<()> {
+    let arch = p.arch()?;
     let gsi = p.gsi()?;
     let gss = p.gss()?;
     let tpi = p.read_type_stream()?;
@@ -462,7 +488,7 @@ pub fn dump_gsi(p: &Pdb) -> Result<()> {
     println!("*** GLOBALS");
     println!();
 
-    let mut context = DumpSymsContext::new(&tpi, &ipi);
+    let mut context = DumpSymsContext::new(arch, &tpi, &ipi);
 
     let mut out = String::new();
     for sym in gsi.names().iter(gss) {
@@ -478,6 +504,7 @@ pub fn dump_gsi(p: &Pdb) -> Result<()> {
 }
 
 pub fn dump_psi(p: &Pdb) -> Result<()> {
+    let arch = p.arch()?;
     let psi = p.read_psi()?;
     let gss = p.gss()?;
     let tpi = p.read_type_stream()?;
@@ -486,7 +513,7 @@ pub fn dump_psi(p: &Pdb) -> Result<()> {
     println!("*** PUBLICS");
     println!();
 
-    let mut context = DumpSymsContext::new(&tpi, &ipi);
+    let mut context = DumpSymsContext::new(arch, &tpi, &ipi);
 
     let mut out = String::new();
     for sym in psi.names().iter(gss) {

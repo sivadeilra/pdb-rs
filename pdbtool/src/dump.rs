@@ -1,14 +1,16 @@
 use crate::dump_utils::{HexDump, HexStr};
 use anyhow::Result;
+use bstr::ByteSlice;
 use ms_pdb::codeview::parser::Parser;
 use ms_pdb::codeview::IteratorWithRangesExt;
 use ms_pdb::dbi::optional_dbg::OptionalDebugHeaderStream;
 use ms_pdb::dbi::{DbiSourcesSubstream, DbiStream, ModuleInfo};
 use ms_pdb::names::NamesStream;
-use ms_pdb::syms::{SymIter, SymKind};
+use ms_pdb::syms::{OffsetSegment, SymIter, SymKind};
 use ms_pdb::tpi::TypeStreamKind;
 use ms_pdb::types::TypeIndex;
 use ms_pdb::{Pdb, Stream};
+use std::borrow::Cow;
 use std::fmt::Write;
 use std::ops::Range;
 use std::path::Path;
@@ -53,7 +55,7 @@ pub enum Subcommand {
     Ipi(types::DumpTypeStreamOptions),
 
     /// Dump DBI header
-    Dbi,
+    Dbi(DbiOptions),
 
     /// Dump DBI Edit-and-Continue Substream
     DbiEnc,
@@ -96,6 +98,20 @@ pub enum Subcommand {
         #[arg(long)]
         len: Option<String>,
     },
+
+    /// Dumps the COFF groups, which are contiguous segments within a section.
+    /// For example, `.text$mn` is a COFF group within the `.text` section.
+    CoffGroups,
+
+    /// Dumps the COFF section headers. This information comes from an Optional Debug Stream.
+    SectionHeaders,
+}
+
+#[derive(clap::Parser)]
+pub struct DbiOptions {
+    /// Show the "Optional Debug Headers" substream
+    #[arg(long)]
+    pub optional_dbg: bool,
 }
 
 #[derive(clap::Parser)]
@@ -126,8 +142,8 @@ pub fn dump_main(options: DumpOptions) -> anyhow::Result<()> {
             names::dump_names(&p, args)?;
         }
 
-        Subcommand::Dbi => {
-            dump_dbi(&p)?;
+        Subcommand::Dbi(opts) => {
+            dump_dbi(&p, opts)?;
         }
 
         Subcommand::DbiEnc => {
@@ -158,9 +174,10 @@ pub fn dump_main(options: DumpOptions) -> anyhow::Result<()> {
         Subcommand::ModuleSymbols(args) => sym::dump_module_symbols(&p, args)?,
 
         Subcommand::Tpi(opts) => {
+            let arch = p.arch()?;
             let type_stream = p.read_type_stream()?;
             let id_stream = p.read_ipi_stream()?;
-            let type_dump_syms_context = DumpSymsContext::new(&type_stream, &id_stream);
+            let type_dump_syms_context = DumpSymsContext::new(arch, &type_stream, &id_stream);
             types::dump_type_stream(
                 TypeStreamKind::TPI,
                 &type_stream,
@@ -172,10 +189,11 @@ pub fn dump_main(options: DumpOptions) -> anyhow::Result<()> {
         }
 
         Subcommand::Ipi(opts) => {
+            let arch = p.arch()?;
             let type_stream = p.read_type_stream()?;
             let id_stream = p.read_ipi_stream()?;
-            let type_dump_syms_context = DumpSymsContext::new(&type_stream, &id_stream);
-            let id_dump_syms_context = DumpSymsContext::new(&id_stream, &id_stream); // TODO: not even remotely right
+            let type_dump_syms_context = DumpSymsContext::new(arch, &type_stream, &id_stream);
+            let id_dump_syms_context = DumpSymsContext::new(arch, &id_stream, &id_stream); // TODO: not even remotely right
 
             let names = p.names()?;
             types::dump_type_stream(
@@ -193,7 +211,7 @@ pub fn dump_main(options: DumpOptions) -> anyhow::Result<()> {
         Subcommand::Streams(args) => streams::dump_streams(&p, args)?,
         Subcommand::Modules(args) => dump_modules(&p, &dbi_stream, args)?,
         Subcommand::Sources(args) => sources::dump_dbi_sources(&dbi_stream, args)?,
-        Subcommand::SectionContribs => dump_section_contribs(&dbi_stream)?,
+        Subcommand::SectionContribs => dump_section_contribs(&p, &dbi_stream)?,
         Subcommand::SectionMap => dump_section_map(&p, &dbi_stream)?,
 
         Subcommand::Hex {
@@ -229,12 +247,45 @@ pub fn dump_main(options: DumpOptions) -> anyhow::Result<()> {
                 println!("Stream length: 0x{len:x} ({len}).", len = stream_data.len());
             }
         }
+
+        Subcommand::CoffGroups => dump_coff_groups(&p)?,
+
+        Subcommand::SectionHeaders => dump_section_headers(&p)?,
     }
 
     Ok(())
 }
 
-fn dump_section_contribs(dbi_stream: &DbiStream<Vec<u8>>) -> anyhow::Result<()> {
+fn dump_coff_groups(pdb: &Pdb) -> anyhow::Result<()> {
+    let coff_groups = pdb.coff_groups()?;
+
+    println!("COFF groups:");
+    println!();
+
+    for (i, group) in coff_groups.vec.iter().enumerate() {
+        println!(
+            "  [{i:4}]  {off_seg} + {size:08x}, {char:08x} : {name:<16}",
+            off_seg = group.offset_segment,
+            size = group.size,
+            char = group.characteristics,
+            name = group.name
+        );
+    }
+
+    Ok(())
+}
+
+fn dump_section_headers(pdb: &Pdb) -> anyhow::Result<()> {
+    let section_headers_bytes = pdb.section_headers_bytes()?;
+    println!("{}", HexDump::new(section_headers_bytes));
+    Ok(())
+}
+
+fn dump_section_contribs(pdb: &Pdb, dbi_stream: &DbiStream<Vec<u8>>) -> anyhow::Result<()> {
+    let coff_groups = pdb.coff_groups()?;
+    let modules = pdb.modules()?;
+    let modules: Vec<ModuleInfo<'_>> = modules.iter().collect();
+
     println!("*** SECTION CONTRIBUTIONS");
     println!();
 
@@ -242,13 +293,35 @@ fn dump_section_contribs(dbi_stream: &DbiStream<Vec<u8>>) -> anyhow::Result<()> 
 
     let section_contribs = dbi_stream.section_contributions()?;
     for contrib in section_contribs.contribs.iter() {
-        println!(
-            "  {:04X} {:04X}:{:08X}  {:08X}  {:08X}",
-            contrib.module_index.get() + 1,
+        let group_name = if let Some(group) = coff_groups.find_group_at(OffsetSegment::new(
+            contrib.offset.get() as u32,
             contrib.section.get(),
-            contrib.offset.get(),
-            contrib.size.get(),
-            contrib.characteristics.get()
+        )) {
+            &group.name
+        } else {
+            "--"
+        };
+
+        let module_name: Cow<'_, str> =
+            if let Some(module) = modules.get(contrib.module_index.get() as usize) {
+                module.module_name.to_str_lossy()
+            } else {
+                Cow::Borrowed("??")
+            };
+        let module_file_name: &str = if let Some((_, after)) = module_name.rsplit_once(['\\', '/'])
+        {
+            after
+        } else {
+            &module_name
+        };
+
+        println!(
+            "  {module_index:04X} {section:04X}:{offset:08X}  {size:08X}  {characteristics:08X}  {group_name:<20}  mod: {module_file_name}",
+            module_index = contrib.module_index.get() + 1,
+            section = contrib.section.get(),
+            offset = contrib.offset.get(),
+            size = contrib.size.get(),
+            characteristics = contrib.characteristics.get(),
         );
     }
 
@@ -397,7 +470,7 @@ fn str_to_u32(s: &str) -> anyhow::Result<u32> {
     }
 }
 
-fn dump_dbi(pdb: &Pdb) -> Result<()> {
+fn dump_dbi(pdb: &Pdb, options: DbiOptions) -> Result<()> {
     let header = pdb.dbi_header();
 
     println!("Signature: 0x{:08x}", header.signature.get());
@@ -441,6 +514,28 @@ fn dump_dbi(pdb: &Pdb) -> Result<()> {
     show_sub(&subs.type_server_map, "Type Server Map");
     show_sub(&subs.optional_debug_header_bytes, "Optional Debug Headers");
     show_sub(&subs.edit_and_continue, "Edit-and-Continue");
+
+    if options.optional_dbg {
+        println!();
+        println!("Optional debug header streams:");
+
+        let opt_streams = pdb.optional_debug_streams()?;
+
+        if !opt_streams.streams.is_empty() {
+            for (i, stream) in opt_streams.iter() {
+                let name = i.name().unwrap_or("???");
+                if stream >= pdb.num_streams() {
+                    println!("error: stream '{name}' out of range: {stream}");
+                    continue;
+                }
+                let stream_len = pdb.stream_len(stream as u32);
+
+                println!("    {name:<20} : stream {stream:6}, len {stream_len:6}");
+            }
+        } else {
+            println!("    (none)");
+        }
+    }
 
     Ok(())
 }

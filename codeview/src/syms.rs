@@ -281,6 +281,18 @@ impl<'a> Sym<'a> {
     pub fn parse(&self) -> Result<SymData<'a>, ParserError> {
         SymData::parse(self.kind, self.data)
     }
+
+    /// Parses the payload of the symbol with a type chosen by the caller.
+    ///
+    /// This is useful when the caller has already tested `Sym::kind` and knows the type of the
+    /// payload.
+    pub fn parse_as<T>(&self) -> Result<T, ParserError>
+    where
+        T: Parse<'a>,
+    {
+        let mut p = Parser::new(self.data);
+        p.parse::<T>()
+    }
 }
 
 impl<'a> Debug for Sym<'a> {
@@ -1221,6 +1233,42 @@ pub const TRAMPOLINE_KIND_INCREMENTAL: u16 = 0;
 /// Branch island thunks
 pub const TRAMPOLINE_KIND_BRANCH_ISLAND: u16 = 1;
 
+/// The fixed header of `S_COFFGROUP` symbols.
+#[repr(C)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Unaligned, Debug)]
+pub struct CoffGroupFixed {
+    /// Size in bytes of the coff group
+    pub cb: U32<LE>,
+    /// Characteristics flags. These are the same as the COFF section characteristics.
+    ///
+    /// See: <https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_section_header>
+    pub characteristics: U32<LE>,
+    /// Location of the COFF group
+    pub off_seg: OffsetSegment,
+}
+
+/// For `S_COFFGROUP`.
+///
+/// `S_COFFGROUP` records are present in the `* Linker *` special module. These records describe
+/// contiguous subsections within COFF sections. For example, `.text$mn` is a COFF group within
+/// the `.text` segment.
+#[derive(Clone, Debug)]
+pub struct CoffGroup<'a> {
+    /// The fixed-size header
+    pub fixed: &'a CoffGroupFixed,
+    /// The name of the COFF group
+    pub name: &'a BStr,
+}
+
+impl<'a> Parse<'a> for CoffGroup<'a> {
+    fn from_parser(p: &mut Parser<'a>) -> Result<Self, ParserError> {
+        Ok(Self {
+            fixed: p.get()?,
+            name: p.strz()?,
+        })
+    }
+}
+
 /// Parsed data from a symbol record
 #[derive(Clone, Debug)]
 #[allow(missing_docs)]
@@ -1260,6 +1308,7 @@ pub enum SymData<'a> {
     ManagedProc(ManagedProc<'a>),
     Annotation(Annotation<'a>),
     HotPatchFunc(HotPatchFunc<'a>),
+    CoffGroup(CoffGroup<'a>),
 }
 
 impl<'a> SymData<'a> {

@@ -26,8 +26,9 @@
 //! * <https://llvm.org/docs/PDB/DbiStream.html>
 //! * <https://github.com/microsoft/microsoft-pdb/blob/805655a28bd8198004be2ac27e6e0290121a5e89/langapi/include/pdb.h#L860>
 
-use crate::Container;
+use crate::dbi::optional_dbg::{OptionalDebugHeaders, OptionalDebugStream};
 use crate::{get_or_init_err, Stream};
+use crate::{Container, NIL_STREAM_INDEX};
 use crate::{StreamIndexIsNilError, StreamIndexU16};
 use anyhow::{bail, Result};
 use ms_codeview::parser::{Parser, ParserError, ParserMut};
@@ -417,7 +418,7 @@ impl<StreamData: AsRef<[u8]>> DbiStream<StreamData> {
     }
 
     /// Parses the Optional Debug Header Substream and returns an object which can query it.
-    pub fn optional_debug_header(&self) -> anyhow::Result<optional_dbg::OptionalDebugHeader> {
+    pub fn optional_debug_header(&self) -> anyhow::Result<optional_dbg::OptionalDebugHeader<'_>> {
         optional_dbg::OptionalDebugHeader::parse(self.optional_debug_header_bytes())
     }
 
@@ -501,7 +502,7 @@ impl<F: ReadAt> crate::Pdb<F> {
     /// Gets access to the DBI Modules Substream. This will read the DBI Modules Substream
     /// on-demand, and will cache it.
     pub fn modules(&self) -> anyhow::Result<&ModInfoSubstream<Vec<u8>>> {
-        get_or_init_err(&self.dbi_modules_cell, || self.read_modules())
+        get_or_init_err(&self.cached.dbi_modules_cell, || self.read_modules())
     }
 
     /// Reads the DBI Sources Substream. This always reads the data, and does not cache it.
@@ -511,7 +512,8 @@ impl<F: ReadAt> crate::Pdb<F> {
 
     /// Gets access to the DBI Sources Substream data.
     pub fn sources_data(&self) -> Result<&[u8]> {
-        let sources_data = get_or_init_err(&self.dbi_sources_cell, || self.read_sources_data())?;
+        let sources_data =
+            get_or_init_err(&self.cached.dbi_sources_cell, || self.read_sources_data())?;
         Ok(sources_data)
     }
 
@@ -523,13 +525,73 @@ impl<F: ReadAt> crate::Pdb<F> {
 
     /// Drops the cached DBI Sources Substream data, if any.
     pub fn drop_sources(&mut self) {
-        self.dbi_sources_cell = Default::default();
+        self.cached.dbi_sources_cell = Default::default();
     }
 
     /// Reads the contents of the DBI Section Contributions Substream. This function never caches
     /// the data; it is always read unconditionally.
     pub fn read_section_contributions(&self) -> Result<Vec<u8>> {
         self.read_dbi_substream(self.dbi_substreams.section_contributions_bytes.clone())
+    }
+
+    /// Reads (uncached) the DBI Optional Debug Streams Substream.
+    pub fn read_optional_debug_streams(&self) -> anyhow::Result<OptionalDebugHeaders> {
+        let num_opt_streams = self.dbi_substreams.optional_debug_header_bytes.len() / 2;
+        if num_opt_streams == 0 {
+            return Ok(OptionalDebugHeaders {
+                streams: Vec::new(),
+            });
+        }
+
+        let mut streams: Vec<u16> = vec![0; num_opt_streams];
+        let sr = self.get_stream_reader(Stream::DBI.value() as u32)?;
+        sr.read_exact_at(
+            streams.as_mut_bytes(),
+            self.dbi_substreams.optional_debug_header_bytes.start as u64,
+        )?;
+
+        Ok(OptionalDebugHeaders { streams })
+    }
+
+    /// Gets the DBI Optional Debug Streams Substream.
+    pub fn optional_debug_streams(&self) -> anyhow::Result<&OptionalDebugHeaders> {
+        get_or_init_err(&self.cached.optional_dbg_streams, || {
+            self.read_optional_debug_streams()
+        })
+    }
+
+    /// Gets the stream index of a specific Optional Debug Stream.
+    pub fn optional_debug_stream(&self, i: OptionalDebugStream) -> anyhow::Result<Option<u32>> {
+        let streams = self.optional_debug_streams()?;
+        if let Some(&s) = streams.streams.get(i.0 as usize) {
+            if s != NIL_STREAM_INDEX {
+                Ok(Some(s as u32))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Reads (uncached) the contents of the "Section Headers" Optional Debug Stream.
+    pub fn read_section_headers_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        let Some(stream) = self.optional_debug_stream(OptionalDebugStream::SECTION_HEADER_DATA)?
+        else {
+            // This information is not available.
+            return Ok(Vec::new());
+        };
+
+        let data = self.read_stream_to_vec(stream)?;
+        Ok(data)
+    }
+
+    /// Gets the contents of the "Section Headers" Optional Debug Stream.
+    pub fn section_headers_bytes(&self) -> anyhow::Result<&[u8]> {
+        get_or_init_err(&self.cached.section_headers_bytes, || {
+            self.read_section_headers_bytes()
+        })
+        .map(|v| v.as_slice())
     }
 }
 
