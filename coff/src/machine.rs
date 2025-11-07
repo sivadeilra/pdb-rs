@@ -1,21 +1,3 @@
-/*
-pub const IMAGE_FILE_RELOCS_STRIPPED: Self = Self(0x0001); // Relocation info stripped from file.
-pub const IMAGE_FILE_EXECUTABLE_IMAGE: Self = Self(0x0002); // File is executable  (i.e. no unresolved external references).
-pub const IMAGE_FILE_LINE_NUMS_STRIPPED: Self = Self(0x0004); // Line nunbers stripped from file.
-pub const IMAGE_FILE_LOCAL_SYMS_STRIPPED: Self = Self(0x0008); // Local symbols stripped from file.
-pub const IMAGE_FILE_AGGRESIVE_WS_TRIM: Self = Self(0x0010); // Aggressively trim working set
-pub const IMAGE_FILE_LARGE_ADDRESS_AWARE: Self = Self(0x0020); // App can handle >2gb addresses
-pub const IMAGE_FILE_BYTES_REVERSED_LO: Self = Self(0x0080); // Bytes of machine word are reversed.
-pub const IMAGE_FILE_32BIT_MACHINE: Self = Self(0x0100); // 32 bit word machine.
-pub const IMAGE_FILE_DEBUG_STRIPPED: Self = Self(0x0200); // Debugging info stripped from file in .DBG file
-pub const IMAGE_FILE_REMOVABLE_RUN_FROM_SWAP: Self = Self(0x0400); // If Image is on removable media, copy and run from the swap file.
-pub const IMAGE_FILE_NET_RUN_FROM_SWAP: Self = Self(0x0800); // If Image is on Net, copy and run from the swap file.
-pub const IMAGE_FILE_SYSTEM: Self = Self(0x1000); // System File.
-pub const IMAGE_FILE_DLL: Self = Self(0x2000); // File is a DLL.
-pub const IMAGE_FILE_UP_SYSTEM_ONLY: Self = Self(0x4000); // File should only be run on a UP machine
-pub const IMAGE_FILE_BYTES_REVERSED_HI: Self = Self(0x8000); // Bytes of machine word are reversed.
-*/
-
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 #[allow(non_camel_case_types)]
 pub struct IMAGE_FILE_MACHINE(pub u16);

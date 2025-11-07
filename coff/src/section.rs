@@ -7,6 +7,7 @@ use bstr::BStr;
 use core::fmt::Debug;
 use core::mem::size_of;
 use static_assertions::const_assert_eq;
+use zerocopy_derive::*;
 
 #[derive(
     Copy,
@@ -17,10 +18,10 @@ use static_assertions::const_assert_eq;
     Hash,
     Ord,
     PartialOrd,
-    zerocopy::IntoBytes,
-    zerocopy::FromBytes,
-    zerocopy::Immutable,
-    zerocopy::KnownLayout,
+    IntoBytes,
+    FromBytes,
+    Immutable,
+    KnownLayout,
 )]
 #[repr(transparent)]
 pub struct SectionCharacteristics(pub u32);
@@ -122,10 +123,10 @@ pub const IMAGE_SIZEOF_SHORT_NAME: usize = 8;
     Ord,
     PartialOrd,
     Hash,
-    zerocopy::FromBytes,
-    zerocopy::IntoBytes,
-    zerocopy::Immutable,
-    zerocopy::KnownLayout,
+    FromBytes,
+    IntoBytes,
+    Immutable,
+    KnownLayout,
 )]
 pub struct IMAGE_SECTION_HEADER {
     pub name: [u8; IMAGE_SIZEOF_SHORT_NAME],
@@ -137,7 +138,7 @@ pub struct IMAGE_SECTION_HEADER {
     pub pointer_to_linenumbers: u32,
     pub number_of_relocations: u16,
     pub number_of_linenumbers: u16,
-    pub characteristics: u32,
+    pub characteristics: SectionCharacteristics,
 }
 
 impl IMAGE_SECTION_HEADER {
@@ -147,10 +148,6 @@ impl IMAGE_SECTION_HEADER {
         } else {
             &self.name
         })
-    }
-
-    pub fn characteristics(&self) -> SectionCharacteristics {
-        SectionCharacteristics(self.characteristics)
     }
 }
 

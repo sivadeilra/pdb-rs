@@ -1,18 +1,13 @@
-//! Module tree for architecture-specific definitions
+//! Architecture-specific definitions
 
 macro_rules! register_set {
     (
         $( #[$a:meta] )*
-        $v:vis enum $ty_name:ident {
-            $(
-                $reg_name:ident = $reg_value:expr,
-            )*
-        }
+        $v:vis enum $ty_name:ident;
+        $( $reg_name:ident = $reg_value:expr, )*
     ) => {
-
         $( #[$a] )*
         #[allow(missing_docs)]
-
         #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
         $v struct $ty_name(pub u16);
 
@@ -81,7 +76,7 @@ pub mod x86;
 pub struct ArchReg {
     /// Target architecture
     pub arch: Arch,
-    /// The untyped register
+    /// The untyped register index
     pub reg: u16,
 }
 
