@@ -391,7 +391,7 @@ pub(crate) fn dump_sections(pdb: &Pdb, options: DumpSectionsOptions) -> anyhow::
             "s {off_seg} rva: {section_rva:08x} + {vsize:08x} : {rwx} : {section_name:<8}     {description}",
             vsize = section.physical_address_or_virtual_size,
             off_seg = OffsetSegment::new(0, section_num),
-            rwx = Rwx(section.characteristics()),
+            rwx = Rwx(section.characteristics),
             description = section_description(&section_name.to_str_lossy()).unwrap_or("")
         );
 
@@ -408,7 +408,7 @@ pub(crate) fn dump_sections(pdb: &Pdb, options: DumpSectionsOptions) -> anyhow::
                 println!(
                         "g {off_seg} rva: {group_virtual_address:08x} + {vsize:08x} : {rwx} :     {name:<30}  {desc}",
                         off_seg = g.offset_segment,
-                        rwx = Rwx(section.characteristics()),
+                        rwx = Rwx(section.characteristics),
                         vsize = g.size,
                         name = g.name
                     );
