@@ -1,6 +1,5 @@
-
 register_set! {
-    enum Amd64Reg {
+    pub enum Amd64Reg {
 
         AL       =   1,
         CL       =   2,

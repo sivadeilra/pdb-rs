@@ -3,7 +3,7 @@
 macro_rules! register_set {
     (
         $( #[$a:meta] )*
-        enum $ty_name:ident {
+        $v:vis enum $ty_name:ident {
             $(
                 $reg_name:ident = $reg_value:expr,
             )*
@@ -14,7 +14,7 @@ macro_rules! register_set {
         #[allow(missing_docs)]
 
         #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-        pub struct $ty_name(pub u16);
+        $v struct $ty_name(pub u16);
 
         #[allow(missing_docs)]
         impl $ty_name {
@@ -43,7 +43,7 @@ macro_rules! register_set {
             }
         }
 
-        impl core::fmt::Debug for $ty_name {
+        impl core::fmt::Display for $ty_name {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                 if let Some(s) = self.get_name() {
                     f.write_str(s)
@@ -52,11 +52,17 @@ macro_rules! register_set {
                 }
             }
         }
+
+        impl core::fmt::Debug for $ty_name {
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                <Self as core::fmt::Display>::fmt(self, f)
+            }
+        }
     }
 }
 
 /// Identifies COFF CPU architectures.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum Arch {
     /// AMD64
     AMD64,
@@ -72,23 +78,17 @@ pub mod x86;
 
 /// Identifies a register in a specific architecture
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum ArchReg {
-    /// AMD64
-    Amd64(amd64::Amd64Reg),
-    /// X86
-    X86(x86::X86Reg),
-    /// ARM64
-    Arm64(arm64::Arm64Reg),
+pub struct ArchReg {
+    /// Target architecture
+    pub arch: Arch,
+    /// The untyped register
+    pub reg: u16,
 }
 
 impl ArchReg {
     /// Ties an arch and a reg
-    pub fn from_arch_reg(arch: Arch, reg: u16) -> Self {
-        match arch {
-            Arch::AMD64 => Self::Amd64(amd64::Amd64Reg(reg)),
-            Arch::ARM64 => Self::Arm64(arm64::Arm64Reg(reg)),
-            Arch::X86 => Self::X86(x86::X86Reg(reg)),
-        }
+    pub fn new(arch: Arch, reg: u16) -> Self {
+        Self { arch, reg }
     }
 }
 
@@ -96,20 +96,16 @@ use core::fmt::{Debug, Display};
 
 impl Debug for ArchReg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ArchReg::Amd64(reg) => reg.fmt(f),
-            ArchReg::X86(reg) => reg.fmt(f),
-            ArchReg::Arm64(reg) => reg.fmt(f),
-        }
+        <Self as Display>::fmt(self, f)
     }
 }
 
 impl Display for ArchReg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ArchReg::Amd64(reg) => reg.fmt(f),
-            ArchReg::X86(reg) => reg.fmt(f),
-            ArchReg::Arm64(reg) => reg.fmt(f),
+        match self.arch {
+            Arch::AMD64 => Display::fmt(&amd64::Amd64Reg(self.reg), f),
+            Arch::X86 => Display::fmt(&x86::X86Reg(self.reg), f),
+            Arch::ARM64 => Display::fmt(&arm64::Arm64Reg(self.reg), f),
         }
     }
 }

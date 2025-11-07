@@ -32,6 +32,7 @@ use crate::{Container, NIL_STREAM_INDEX};
 use crate::{StreamIndexIsNilError, StreamIndexU16};
 use anyhow::{bail, Result};
 use ms_codeview::parser::{Parser, ParserError, ParserMut};
+use ms_coff::IMAGE_SECTION_HEADER;
 use std::mem::size_of;
 use std::ops::Range;
 use sync_file::ReadAt;
@@ -491,6 +492,15 @@ impl<F: ReadAt> crate::Pdb<F> {
         Ok(substream_data)
     }
 
+    fn read_dbi_substream_u32(&self, range: Range<usize>) -> anyhow::Result<Vec<u32>> {
+        let len_bytes = range.len();
+        let len_u32 = len_bytes / 4;
+        let mut substream_data = vec![0u32; len_u32];
+        let reader = self.container.get_stream_reader(Stream::DBI.into())?;
+        reader.read_exact_at(substream_data.as_mut_bytes(), range.start as u64)?;
+        Ok(substream_data)
+    }
+
     /// Reads the module substream data from the DBI stream.
     ///
     /// This function always reads the data from the file. It does not cache the data.
@@ -530,8 +540,11 @@ impl<F: ReadAt> crate::Pdb<F> {
 
     /// Reads the contents of the DBI Section Contributions Substream. This function never caches
     /// the data; it is always read unconditionally.
-    pub fn read_section_contributions(&self) -> Result<Vec<u8>> {
-        self.read_dbi_substream(self.dbi_substreams.section_contributions_bytes.clone())
+    ///
+    /// The returned buffer is `Vec<u32>` instead of `Vec<u8>` so that natural alignment is
+    /// guaranteed.
+    pub fn read_section_contributions(&self) -> Result<Vec<u32>> {
+        self.read_dbi_substream_u32(self.dbi_substreams.section_contributions_bytes.clone())
     }
 
     /// Reads (uncached) the DBI Optional Debug Streams Substream.
@@ -575,23 +588,25 @@ impl<F: ReadAt> crate::Pdb<F> {
     }
 
     /// Reads (uncached) the contents of the "Section Headers" Optional Debug Stream.
-    pub fn read_section_headers_bytes(&self) -> anyhow::Result<Vec<u8>> {
+    pub fn read_section_headers(&self) -> anyhow::Result<Box<[IMAGE_SECTION_HEADER]>> {
         let Some(stream) = self.optional_debug_stream(OptionalDebugStream::SECTION_HEADER_DATA)?
         else {
             // This information is not available.
-            return Ok(Vec::new());
+            return Ok(Box::from([]));
         };
 
-        let data = self.read_stream_to_vec(stream)?;
-        Ok(data)
+        let sr = self.get_stream_reader(stream)?;
+        let stream_size = sr.stream_size();
+        let num_sections = stream_size as usize / core::mem::size_of::<IMAGE_SECTION_HEADER>();
+        let mut section_headers: Box<[IMAGE_SECTION_HEADER]> =
+            <[IMAGE_SECTION_HEADER]>::new_box_zeroed_with_elems(num_sections).unwrap();
+        sr.read_exact_at(section_headers.as_mut_bytes(), 0)?;
+        Ok(section_headers)
     }
 
     /// Gets the contents of the "Section Headers" Optional Debug Stream.
-    pub fn section_headers_bytes(&self) -> anyhow::Result<&[u8]> {
-        get_or_init_err(&self.cached.section_headers_bytes, || {
-            self.read_section_headers_bytes()
-        })
-        .map(|v| v.as_slice())
+    pub fn section_headers(&self) -> anyhow::Result<&[IMAGE_SECTION_HEADER]> {
+        get_or_init_err(&self.cached.section_headers, || self.read_section_headers()).map(|v| &**v)
     }
 }
 

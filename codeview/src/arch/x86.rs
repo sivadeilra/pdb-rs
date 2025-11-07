@@ -1,7 +1,7 @@
 //! x86
 
 register_set! {
-    enum X86Reg {
+    pub enum X86Reg {
 
     //  Register set for the Intel 80x86 and ix86 processor series
     //  (plus PCODE registers)

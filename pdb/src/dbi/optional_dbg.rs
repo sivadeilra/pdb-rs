@@ -94,7 +94,9 @@ impl OptionalDebugStream {
 impl OptionalDebugStream {
     /// Returns the name of this optional debug stream.
     pub fn name(&self) -> Option<&'static str> {
-        OPTIONAL_DEBUG_HEADER_STREAM_NAME.get(self.0 as usize).copied()
+        OPTIONAL_DEBUG_HEADER_STREAM_NAME
+            .get(self.0 as usize)
+            .copied()
     }
 }
 

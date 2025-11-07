@@ -121,7 +121,7 @@ pub fn dump_sym(
 
         SymData::RegRel(reg_rel) => {
             let reg = reg_rel.fixed.register.get();
-            let arch_reg = ArchReg::from_arch_reg(context.arch, reg);
+            let arch_reg = ArchReg::new(context.arch, reg);
             write!(
                 out,
                 "{arch_reg} + 0x{offset:x}, ",
@@ -179,7 +179,7 @@ pub fn dump_sym(
         SymData::InlineSiteEnd => {}
 
         SymData::DefRangeRegister(r) => {
-            let reg = ArchReg::from_arch_reg(context.arch, r.fixed.reg.get());
+            let reg = ArchReg::new(context.arch, r.fixed.reg.get());
             write!(out, "register: {reg}")?;
         }
 

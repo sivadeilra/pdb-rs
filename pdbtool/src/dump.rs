@@ -21,6 +21,7 @@ use self::types::dump_type_index_short;
 
 mod lines;
 mod names;
+mod sections;
 mod sources;
 mod streams;
 pub mod sym;
@@ -104,7 +105,7 @@ pub enum Subcommand {
     CoffGroups,
 
     /// Dumps the COFF section headers. This information comes from an Optional Debug Stream.
-    SectionHeaders,
+    Sections(sections::DumpSectionsOptions),
 }
 
 #[derive(clap::Parser)]
@@ -211,7 +212,7 @@ pub fn dump_main(options: DumpOptions) -> anyhow::Result<()> {
         Subcommand::Streams(args) => streams::dump_streams(&p, args)?,
         Subcommand::Modules(args) => dump_modules(&p, &dbi_stream, args)?,
         Subcommand::Sources(args) => sources::dump_dbi_sources(&dbi_stream, args)?,
-        Subcommand::SectionContribs => dump_section_contribs(&p, &dbi_stream)?,
+        Subcommand::SectionContribs => sections::dump_section_contribs(&p, &dbi_stream)?,
         Subcommand::SectionMap => dump_section_map(&p, &dbi_stream)?,
 
         Subcommand::Hex {
@@ -248,81 +249,8 @@ pub fn dump_main(options: DumpOptions) -> anyhow::Result<()> {
             }
         }
 
-        Subcommand::CoffGroups => dump_coff_groups(&p)?,
-
-        Subcommand::SectionHeaders => dump_section_headers(&p)?,
-    }
-
-    Ok(())
-}
-
-fn dump_coff_groups(pdb: &Pdb) -> anyhow::Result<()> {
-    let coff_groups = pdb.coff_groups()?;
-
-    println!("COFF groups:");
-    println!();
-
-    for (i, group) in coff_groups.vec.iter().enumerate() {
-        println!(
-            "  [{i:4}]  {off_seg} + {size:08x}, {char:08x} : {name:<16}",
-            off_seg = group.offset_segment,
-            size = group.size,
-            char = group.characteristics,
-            name = group.name
-        );
-    }
-
-    Ok(())
-}
-
-fn dump_section_headers(pdb: &Pdb) -> anyhow::Result<()> {
-    let section_headers_bytes = pdb.section_headers_bytes()?;
-    println!("{}", HexDump::new(section_headers_bytes));
-    Ok(())
-}
-
-fn dump_section_contribs(pdb: &Pdb, dbi_stream: &DbiStream<Vec<u8>>) -> anyhow::Result<()> {
-    let coff_groups = pdb.coff_groups()?;
-    let modules = pdb.modules()?;
-    let modules: Vec<ModuleInfo<'_>> = modules.iter().collect();
-
-    println!("*** SECTION CONTRIBUTIONS");
-    println!();
-
-    println!("  Imod  Address        Size      Characteristics");
-
-    let section_contribs = dbi_stream.section_contributions()?;
-    for contrib in section_contribs.contribs.iter() {
-        let group_name = if let Some(group) = coff_groups.find_group_at(OffsetSegment::new(
-            contrib.offset.get() as u32,
-            contrib.section.get(),
-        )) {
-            &group.name
-        } else {
-            "--"
-        };
-
-        let module_name: Cow<'_, str> =
-            if let Some(module) = modules.get(contrib.module_index.get() as usize) {
-                module.module_name.to_str_lossy()
-            } else {
-                Cow::Borrowed("??")
-            };
-        let module_file_name: &str = if let Some((_, after)) = module_name.rsplit_once(['\\', '/'])
-        {
-            after
-        } else {
-            &module_name
-        };
-
-        println!(
-            "  {module_index:04X} {section:04X}:{offset:08X}  {size:08X}  {characteristics:08X}  {group_name:<20}  mod: {module_file_name}",
-            module_index = contrib.module_index.get() + 1,
-            section = contrib.section.get(),
-            offset = contrib.offset.get(),
-            size = contrib.size.get(),
-            characteristics = contrib.characteristics.get(),
-        );
+        Subcommand::CoffGroups => sections::dump_coff_groups(&p)?,
+        Subcommand::Sections(opts) => sections::dump_sections(&p, opts)?,
     }
 
     Ok(())

@@ -1,7 +1,7 @@
 //! ARM64 / AArch64
 
 register_set! {
-    enum Arm64Reg {
+    pub enum Arm64Reg {
         // General purpose 32-bit integer registers
 
         W0     =  10,

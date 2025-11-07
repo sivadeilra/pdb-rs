@@ -40,6 +40,7 @@ pub use bstr::BStr;
 pub use coff_groups::{CoffGroup, CoffGroups};
 pub use container::{Container, StreamReader};
 pub use ms_codeview::{self as codeview, syms, types};
+pub use ms_coff::{self as coff, IMAGE_SECTION_HEADER};
 pub use msfz::StreamData;
 pub use stream_index::{Stream, StreamIndexIsNilError, StreamIndexU16, NIL_STREAM_INDEX};
 pub use sync_file::{RandomAccessFile, ReadAt, WriteAt};
@@ -109,7 +110,7 @@ struct PdbCached {
 
     coff_groups: OnceCell<CoffGroups>,
     optional_dbg_streams: OnceCell<OptionalDebugHeaders>,
-    section_headers_bytes: OnceCell<Vec<u8>>,
+    section_headers: OnceCell<Box<[IMAGE_SECTION_HEADER]>>,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
