@@ -491,6 +491,9 @@ pub struct DumpModuleSymbols {
     /// Show the contents of the Global Refs section.
     #[arg(long)]
     pub global_refs: bool,
+
+    #[arg(long)]
+    pub check_only: bool,
 }
 
 pub fn dump_module_symbols(pdb: &Pdb, options: DumpModuleSymbols) -> anyhow::Result<()> {
@@ -531,6 +534,57 @@ pub fn dump_module_symbols(pdb: &Pdb, options: DumpModuleSymbols) -> anyhow::Res
         };
 
         let arch = pdb.arch()?;
+
+        let mut found_compile = false;
+
+        if options.check_only {
+            let module_sym_data = module_stream.sym_data()?;
+            let mut depth: u32 = 0;
+
+            for sym in SymIter::for_module_syms(module_sym_data) {
+                if sym.kind.ends_scope() {
+                    if depth > 0 {
+                        depth -= 1;
+                    } else {
+                        println!(
+                            "warning: this symbol closes a symbol scope, but we are not in a nested symbol scope"
+                        );
+                    }
+                    continue;
+                }
+
+                match sym.kind {
+                    SymKind::S_COMPILE2 | SymKind::S_COMPILE3 => {
+                        found_compile = true;
+                        if depth > 0 {
+                            println!(
+                                "warning: found S_COMPILE* symbol nested within a symbol scope"
+                            );
+                        }
+                    }
+
+                    // These records require that S_COMPILE already have been found.
+                    SymKind::S_GPROC32
+                    | SymKind::S_LPROC32
+                    | SymKind::S_GPROC32_ID
+                    | SymKind::S_LPROC32_ID => {
+                        if !found_compile {
+                            println!(
+                                "warning: symbol found without preceding S_COMPILE* record: {:?}",
+                                sym.kind
+                            );
+                        }
+                    }
+
+                    _ => {}
+                }
+
+                if sym.kind.starts_scope() {
+                    depth += 1;
+                }
+            }
+            continue;
+        }
 
         dump_symbol_stream(
             arch,

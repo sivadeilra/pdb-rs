@@ -22,6 +22,10 @@ pub struct DumpTypeStreamOptions {
     /// Show the value of `TypeIndex` references.
     #[arg(long)]
     pub show_type_indexes: bool,
+
+    /// Hide the type indexes and record stream offsets (for easy diffing)
+    #[arg(long)]
+    pub affine: bool,
 }
 
 pub fn dump_type_stream(
@@ -139,11 +143,15 @@ pub fn dump_type_record(
         ty_ref_in(out, ty)
     };
 
-    write!(
-        out,
-        "[{record_offset:08x}] {index_prefix}#{:08x} [{:04x}] {kind:?} : ",
-        type_index.0, kind.0,
-    )?;
+    if options.affine {
+        write!(out, "[record] [{:04x}] {kind:?} : ", kind.0)?;
+    } else {
+        write!(
+            out,
+            "[{record_offset:08x}] {index_prefix}#{:08x} [{:04x}] {kind:?} : ",
+            type_index.0, kind.0,
+        )?;
+    }
 
     let mut p = Parser::new(data);
 
