@@ -26,6 +26,7 @@ mod sections;
 mod sources;
 mod streams;
 pub mod sym;
+mod tools;
 mod types;
 
 #[derive(clap::Parser)]
@@ -110,6 +111,9 @@ pub enum Subcommand {
 
     /// Dumps the COFF section headers. This information comes from an Optional Debug Stream.
     Sections(sections::DumpSectionsOptions),
+
+    /// Show tools used to compile each module
+    Tools,
 }
 
 #[derive(clap::Parser)]
@@ -192,7 +196,7 @@ pub fn dump_main(options: DumpOptions) -> anyhow::Result<()> {
             let arch = p.arch()?;
             let type_stream = p.read_type_stream()?;
             let id_stream = p.read_ipi_stream()?;
-            let type_dump_syms_context = DumpSymsContext::new(arch, &type_stream, &id_stream);
+            let type_dump_syms_context = DumpSymsContext::new(arch, &type_stream, &id_stream, None);
             types::dump_type_stream(
                 TypeStreamKind::TPI,
                 &type_stream,
@@ -207,8 +211,8 @@ pub fn dump_main(options: DumpOptions) -> anyhow::Result<()> {
             let arch = p.arch()?;
             let type_stream = p.read_type_stream()?;
             let id_stream = p.read_ipi_stream()?;
-            let type_dump_syms_context = DumpSymsContext::new(arch, &type_stream, &id_stream);
-            let id_dump_syms_context = DumpSymsContext::new(arch, &id_stream, &id_stream); // TODO: not even remotely right
+            let type_dump_syms_context = DumpSymsContext::new(arch, &type_stream, &id_stream, None);
+            let id_dump_syms_context = DumpSymsContext::new(arch, &id_stream, &id_stream, None); // TODO: not even remotely right
 
             let names = p.names()?;
             types::dump_type_stream(
@@ -265,6 +269,8 @@ pub fn dump_main(options: DumpOptions) -> anyhow::Result<()> {
 
         Subcommand::CoffGroups => sections::dump_coff_groups(&p)?,
         Subcommand::Sections(opts) => sections::dump_sections(&p, opts)?,
+
+        Subcommand::Tools => tools::dump_tools(&p)?,
     }
 
     Ok(())

@@ -338,6 +338,8 @@ pub struct DumpSymsContext<'a> {
     pub ipi: &'a TypeStream<Vec<u8>>,
     pub arch: Arch,
     pub sym_kind_filter: Vec<SymKind>,
+    pub header_label: Option<String>,
+    pub header_label_shown: bool,
 }
 
 impl<'a> DumpSymsContext<'a> {
@@ -345,6 +347,7 @@ impl<'a> DumpSymsContext<'a> {
         arch: Arch,
         type_stream: &'a TypeStream<Vec<u8>>,
         ipi: &'a TypeStream<Vec<u8>>,
+        header_label: Option<String>,
     ) -> Self {
         Self {
             scope_depth: 0,
@@ -354,6 +357,8 @@ impl<'a> DumpSymsContext<'a> {
             ipi,
             arch,
             sym_kind_filter: Vec::new(),
+            header_label,
+            header_label_shown: false,
         }
     }
 
@@ -371,6 +376,20 @@ impl<'a> DumpSymsContext<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn show_header_label(&mut self) {
+        if self.header_label_shown {
+            return;
+        }
+
+        self.header_label_shown = true;
+
+        if let Some(ref header_label) = self.header_label {
+            println!();
+            println!("{}", header_label);
+            println!("--------------------------------------------------");
+        }
     }
 }
 
@@ -398,6 +417,7 @@ pub fn dump_globals(
         show_bytes,
         show_types,
         symbol_kind_filters,
+        None,
     )?;
     Ok(())
 }
@@ -413,6 +433,7 @@ pub fn dump_symbol_stream(
     show_bytes: bool,
     show_types: bool,
     symbol_filters: &[String],
+    header_label: Option<String>,
 ) -> anyhow::Result<()> {
     let mut iter = SymIter::new(symbol_records).with_ranges();
 
@@ -428,7 +449,7 @@ pub fn dump_symbol_stream(
 
     let mut num_found = 0;
     let mut out = String::new();
-    let mut context = DumpSymsContext::new(arch, type_stream, ipi);
+    let mut context = DumpSymsContext::new(arch, type_stream, ipi, header_label);
     context.show_type_index = show_types;
 
     for f in symbol_filters.iter() {
@@ -437,6 +458,8 @@ pub fn dump_symbol_stream(
 
     for (record_range, sym) in iter {
         out.clear();
+
+        context.show_header_label();
 
         dump_sym(
             &mut out,
@@ -494,6 +517,10 @@ pub struct DumpModuleSymbols {
 
     #[arg(long)]
     pub check_only: bool,
+
+    /// Show tool names (compiler, linker, etc.) for each module.
+    #[arg(long)]
+    pub tools: bool,
 }
 
 pub fn dump_module_symbols(pdb: &Pdb, options: DumpModuleSymbols) -> anyhow::Result<()> {
@@ -524,12 +551,8 @@ pub fn dump_module_symbols(pdb: &Pdb, options: DumpModuleSymbols) -> anyhow::Res
             }
         }
 
-        println!("Module #{module_index}");
-        println!("-------------------");
-        println!();
-
         let Some(module_stream) = pdb.read_module_stream(&module)? else {
-            println!("Module does not have a module stream (no symbols for module)");
+            // println!("Module does not have a module stream (no symbols for module)");
             continue;
         };
 
@@ -597,9 +620,8 @@ pub fn dump_module_symbols(pdb: &Pdb, options: DumpModuleSymbols) -> anyhow::Res
             options.bytes,
             false,
             &options.where_kind,
+            Some(format!("Module #{module_index}")),
         )?;
-
-        println!();
 
         if options.global_refs {
             println!("Global Refs");
@@ -611,7 +633,7 @@ pub fn dump_module_symbols(pdb: &Pdb, options: DumpModuleSymbols) -> anyhow::Res
                 let gss = pdb.gss()?;
 
                 let mut out = String::new();
-                let mut context = DumpSymsContext::new(arch, &tpi, &ipi);
+                let mut context = DumpSymsContext::new(arch, &tpi, &ipi, None);
 
                 for &global_ref in module_global_refs.iter() {
                     let global_ref = global_ref.get();
@@ -659,7 +681,7 @@ pub fn dump_gsi(p: &Pdb) -> Result<()> {
     println!("*** GLOBALS");
     println!();
 
-    let mut context = DumpSymsContext::new(arch, &tpi, &ipi);
+    let mut context = DumpSymsContext::new(arch, &tpi, &ipi, None);
 
     let mut out = String::new();
     for sym in gsi.names().iter(gss) {
@@ -684,7 +706,7 @@ pub fn dump_psi(p: &Pdb) -> Result<()> {
     println!("*** PUBLICS");
     println!();
 
-    let mut context = DumpSymsContext::new(arch, &tpi, &ipi);
+    let mut context = DumpSymsContext::new(arch, &tpi, &ipi, None);
 
     let mut out = String::new();
     for sym in psi.names().iter(gss) {

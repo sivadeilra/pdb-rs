@@ -61,7 +61,7 @@ pub fn find_name_command(options: &FindNameOptions) -> Result<()> {
     let arch = pdb.arch()?;
     let tpi = pdb.read_type_stream()?;
     let ipi = pdb.read_ipi_stream()?;
-    let mut context = DumpSymsContext::new(arch, &tpi, &ipi);
+    let mut context = DumpSymsContext::new(arch, &tpi, &ipi, None);
 
     let gss = pdb.read_gss()?;
 

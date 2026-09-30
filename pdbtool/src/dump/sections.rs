@@ -245,7 +245,7 @@ pub(crate) fn dump_sections(pdb: &Pdb, options: DumpSectionsOptions) -> anyhow::
 
     let tpi = pdb.read_type_stream()?;
     let ipi = pdb.read_ipi_stream()?;
-    let mut dump_syms_context = DumpSymsContext::new(pdb.arch()?, &tpi, &ipi);
+    let mut dump_syms_context = DumpSymsContext::new(pdb.arch()?, &tpi, &ipi, None);
     dump_syms_context.show_record_offsets = false;
 
     // (group_offset, group_size) describe the entire section or COFF group (subsection) that we
