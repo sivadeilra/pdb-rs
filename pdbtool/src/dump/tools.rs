@@ -84,8 +84,13 @@ pub fn dump_tools(p: &Pdb) -> Result<()> {
     let mut flat_tools_map: Vec<_> = tools_map.iter().collect();
     flat_tools_map.sort_unstable_by_key(|&(name, _count)| name);
 
-    for &(ref name, count) in flat_tools_map.iter() {
-        println!("{:10} : {}", count, name);
+    if modules.is_empty() {
+        println!("Did not find any modules. PDB may be stripped.");
+    } else {
+        for &(ref name, &count) in flat_tools_map.iter() {
+            let pct_total = count as f32 * 100.0 / modules.len() as f32;
+            println!("{count:10}  {pct_total:5.1} % : {name}");
+        }
     }
 
     Ok(())
