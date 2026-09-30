@@ -121,6 +121,10 @@ pub fn dump_sym(
             write!(out, "sig: 0x{:08x} {}", obj_name.signature, obj_name.name)?;
         }
 
+        SymData::Compile2(compile2) => {
+            write!(out, "{}", compile2.name)?;
+        }
+
         SymData::Compile3(compile3) => {
             write!(out, "{}", compile3.name)?;
         }

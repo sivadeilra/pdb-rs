@@ -551,6 +551,39 @@ impl<'a> Parse<'a> for ObjectName<'a> {
     }
 }
 
+/// `S_COMPILE2`
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Unaligned, Debug)]
+#[repr(C)]
+#[allow(missing_docs)]
+pub struct Compile2Fixed {
+    pub flags: U32<LE>,
+    pub machine: U16<LE>,
+    pub frontend_major: U16<LE>,
+    pub frontend_minor: U16<LE>,
+    pub frontend_build: U16<LE>,
+    pub ver_major: U16<LE>,
+    pub ver_minor: U16<LE>,
+    pub ver_build: U16<LE>,
+    // name: strz
+}
+
+/// `S_COMPILE2`
+#[allow(missing_docs)]
+#[derive(Clone, Debug)]
+pub struct Compile2<'a> {
+    pub fixed: &'a Compile2Fixed,
+    pub name: &'a BStr,
+}
+
+impl<'a> Parse<'a> for Compile2<'a> {
+    fn from_parser(p: &mut Parser<'a>) -> Result<Self, ParserError> {
+        Ok(Self {
+            fixed: p.get()?,
+            name: p.strz()?,
+        })
+    }
+}
+
 /// `S_COMPILE3`
 #[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Unaligned, Debug)]
 #[repr(C)]
@@ -1521,6 +1554,7 @@ impl<'a> Parse<'a> for Section<'a> {
 pub enum SymData<'a> {
     Unknown,
     ObjName(ObjectName<'a>),
+    Compile2(Compile2<'a>),
     Compile3(Compile3<'a>),
     Proc(Proc<'a>),
     Thunk(Thunk<'a>),
@@ -1579,6 +1613,7 @@ impl<'a> SymData<'a> {
             SymKind::S_OBJNAME => Self::ObjName(p.parse()?),
             SymKind::S_GPROC32 | SymKind::S_LPROC32 => Self::Proc(p.parse()?),
             SymKind::S_THUNK32 => Self::Thunk(p.parse()?),
+            SymKind::S_COMPILE2 => Self::Compile2(p.parse()?),
             SymKind::S_COMPILE3 => Self::Compile3(p.parse()?),
             SymKind::S_UDT => Self::Udt(p.parse()?),
             SymKind::S_CONSTANT => Self::Constant(p.parse()?),

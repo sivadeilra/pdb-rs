@@ -32,6 +32,9 @@ pub fn dump_tools(p: &Pdb) -> Result<()> {
             match sym.kind {
                 SymKind::S_COMPILE | SymKind::S_COMPILE2 | SymKind::S_COMPILE3 => {
                     match sym.parse() {
+                        Ok(SymData::Compile2(compile)) => {
+                            tool_name = Some(compile.name.to_string());
+                        }
                         Ok(SymData::Compile3(compile)) => {
                             tool_name = Some(compile.name.to_string());
                         }
