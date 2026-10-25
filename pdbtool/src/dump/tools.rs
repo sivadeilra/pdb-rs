@@ -3,13 +3,24 @@ use anyhow::Result;
 use std::collections::HashMap;
 use zerocopy::IntoBytes;
 
-pub fn dump_tools(p: &Pdb) -> Result<()> {
-    let modules: Vec<_> = p.modules()?.iter().collect();
+#[derive(clap::Parser)]
+pub struct ToolsOptions {
+    /// Sort results by library
+    #[arg(long)]
+    pub by_lib: bool,
+}
+
+pub fn dump_tools(p: &Pdb, options: &ToolsOptions) -> Result<()> {
+    let mut modules: Vec<(usize, _)> = p.modules()?.iter().enumerate().collect();
+
+    if options.by_lib {
+        modules.sort_unstable_by_key(|(_, module)| (module.obj_file(), module.module_name()));
+    }
 
     let mut num_unknown_tool: u32 = 0;
     let mut tools_map: HashMap<String, u32> = HashMap::new();
 
-    for (module_index, module) in modules.iter().enumerate() {
+    for (module_index, module) in modules.iter() {
         let Some(_module_stream) = module.stream() else {
             continue;
         };

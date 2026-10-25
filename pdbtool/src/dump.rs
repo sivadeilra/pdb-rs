@@ -113,7 +113,7 @@ pub enum Subcommand {
     Sections(sections::DumpSectionsOptions),
 
     /// Show tools used to compile each module
-    Tools,
+    Tools(tools::ToolsOptions),
 }
 
 #[derive(clap::Parser)]
@@ -270,7 +270,7 @@ pub fn dump_main(options: DumpOptions) -> anyhow::Result<()> {
         Subcommand::CoffGroups => sections::dump_coff_groups(&p)?,
         Subcommand::Sections(opts) => sections::dump_sections(&p, opts)?,
 
-        Subcommand::Tools => tools::dump_tools(&p)?,
+        Subcommand::Tools(options) => tools::dump_tools(&p, &options)?,
     }
 
     Ok(())
